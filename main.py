@@ -22,7 +22,7 @@ class OCRApp(QMainWindow):
 
         # Dropdown for choosing single or multiple files
         self.combo_mode = QComboBox(self)
-        self.combo_mode.addItems(['Single File', 'Folder'])
+        self.combo_mode.addItems(['Single File', 'Multiple Files'])
         self.combo_mode.currentIndexChanged.connect(self.change_mode)
 
         self.btn_upload = QPushButton('Upload PDF', self)
@@ -87,18 +87,31 @@ class OCRApp(QMainWindow):
                 output_file = os.path.join(ocr_pdf_dir, os.path.basename(selected_file))
 
                 try:
-                    # Perform OCR
-                    ocrmypdf.ocr(selected_file, output_file)
-                    self.show_message('Success', f'OCR complete for {selected_file}. Saved to {output_file}')
-
-                    # Create a 'chapters' folder
-                    chapters_dir = os.path.join(output_dir, 'chapters')
-                    os.makedirs(chapters_dir, exist_ok=True)
-
-                    # Divide into chapters based on "Chapter" keyword
-                    self.split_into_chapters(output_file, chapters_dir)
+                    if self.is_text_based(selected_file):
+                        self.split_into_chapters(selected_file, os.path.join(output_dir, 'chapters'))
+                    else:
+                        ocrmypdf.ocr(selected_file, output_file)
+                        self.split_into_chapters(output_file, os.path.join(output_dir, 'chapters'))
                 except Exception as e:
-                    self.show_message('Error', f'An error occurred with file {selected_file}: {e}')
+                    print(f'Error processing file {selected_file}: {e}')
+
+            self.show_message('Success', 'All files have been processed successfully.')
+
+    def is_text_based(self, pdf_path):
+        """ Check if the PDF contains text or is image-based """
+        try:
+            pdf_document = fitz.open(pdf_path)
+            for page_num in range(len(pdf_document)):
+                page = pdf_document.load_page(page_num)
+                text = page.get_text("text")
+                if text.strip():  # If there's any text on the page
+                    pdf_document.close()
+                    return True
+            pdf_document.close()
+            return False
+        except Exception as e:
+            print(f'Error checking PDF type: {e}')
+            return False
 
     def split_into_chapters(self, pdf_path, chapters_dir):
         try:
@@ -114,6 +127,8 @@ class OCRApp(QMainWindow):
                     if first_word == 'chapter':
                         chapter_start_pages.append(page_num)
 
+            os.makedirs(chapters_dir, exist_ok=True)
+
             for i, start_page in enumerate(chapter_start_pages):
                 end_page = chapter_start_pages[i + 1] if i + 1 < len(chapter_start_pages) else len(pdf_document)
                 chapter_pdf_path = os.path.join(chapters_dir, f'{os.path.basename(pdf_path).replace(".pdf", f"_chapter_{i+1}.pdf")}')
@@ -124,9 +139,8 @@ class OCRApp(QMainWindow):
                 chapter_pdf.close()
 
             pdf_document.close()
-            self.show_message('Success', 'Chapters divided and saved successfully.')
         except Exception as e:
-            self.show_message('Error', f'An error occurred while splitting chapters: {e}')
+            print(f'Error splitting chapters: {e}')
 
     def show_message(self, title, message):
         msg_box = QMessageBox(self)
