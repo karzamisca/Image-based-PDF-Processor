@@ -2,6 +2,7 @@ import sys
 import os
 import ocrmypdf
 import fitz  # PyMuPDF
+from docx import Document
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QPushButton, QLabel, QVBoxLayout, QWidget, QMessageBox, QComboBox
 
 class OCRApp(QMainWindow):
@@ -83,15 +84,21 @@ class OCRApp(QMainWindow):
                 base_name = os.path.splitext(os.path.basename(selected_file))[0]
                 output_dir = os.path.join(self.output_path, base_name)
                 ocr_pdf_dir = os.path.join(output_dir, 'ocr_pdf')
+                text_dir = os.path.join(output_dir, 'text')
                 os.makedirs(ocr_pdf_dir, exist_ok=True)
+                os.makedirs(text_dir, exist_ok=True)
                 output_file = os.path.join(ocr_pdf_dir, os.path.basename(selected_file))
 
                 try:
                     if self.is_text_based(selected_file):
+                        # Directly split into chapters and convert to DOCX
                         self.split_into_chapters(selected_file, os.path.join(output_dir, 'chapters'))
+                        self.convert_to_docx(selected_file, os.path.join(text_dir, f'{base_name}.docx'))
                     else:
+                        # Perform OCR, split into chapters, and convert OCR PDF to DOCX
                         ocrmypdf.ocr(selected_file, output_file)
                         self.split_into_chapters(output_file, os.path.join(output_dir, 'chapters'))
+                        self.convert_to_docx(output_file, os.path.join(text_dir, f'{base_name}.docx'))
                 except Exception as e:
                     print(f'Error processing file {selected_file}: {e}')
 
@@ -141,6 +148,22 @@ class OCRApp(QMainWindow):
             pdf_document.close()
         except Exception as e:
             print(f'Error splitting chapters: {e}')
+
+    def convert_to_docx(self, pdf_path, docx_output_path):
+        """ Convert the PDF text to a DOCX file """
+        try:
+            pdf_document = fitz.open(pdf_path)
+            doc = Document()
+
+            for page_num in range(len(pdf_document)):
+                page = pdf_document.load_page(page_num)
+                text = page.get_text("text")
+                doc.add_paragraph(text)
+
+            doc.save(docx_output_path)
+            pdf_document.close()
+        except Exception as e:
+            print(f'Error converting PDF to DOCX: {e}')
 
     def show_message(self, title, message):
         msg_box = QMessageBox(self)
