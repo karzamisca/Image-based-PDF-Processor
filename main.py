@@ -3,7 +3,13 @@ import os
 import ocrmypdf
 import fitz  # PyMuPDF
 from docx import Document
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QPushButton, QLabel, QVBoxLayout, QWidget, QMessageBox, QComboBox
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QFileDialog, QPushButton, QLabel,
+    QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QComboBox, QTextEdit, QScrollArea
+)
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtCore import Qt
+
 
 class OCRApp(QMainWindow):
     def __init__(self):
@@ -15,7 +21,7 @@ class OCRApp(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle('OCR My PDF')
-        self.setGeometry(100, 100, 400, 250)
+        self.setGeometry(100, 100, 1600, 800)
 
         # Create widgets
         self.label_input = QLabel('Input Path: Not Selected', self)
@@ -35,17 +41,48 @@ class OCRApp(QMainWindow):
         self.btn_process = QPushButton('Process PDF', self)
         self.btn_process.clicked.connect(self.process_files)
 
+        # TextEdit fields for comparison (OCR PDF and DOCX)
+        self.ocr_text_edit = QTextEdit(self)
+        self.docx_text_edit = QTextEdit(self)
+        self.ocr_text_edit.setReadOnly(True)
+        self.docx_text_edit.setReadOnly(True)
+
+        # Create a scroll area for image-based PDFs
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+
+        # Set up the layout for displaying images
+        self.scroll_area_widget_layout = QVBoxLayout()
+        self.scroll_area_widget = QWidget()
+        self.scroll_area_widget.setLayout(self.scroll_area_widget_layout)
+        self.scroll_area.setWidget(self.scroll_area_widget)
+
         # Layout
-        layout = QVBoxLayout()
-        layout.addWidget(self.label_input)
-        layout.addWidget(self.combo_mode)
-        layout.addWidget(self.btn_upload)
-        layout.addWidget(self.label_output)
-        layout.addWidget(self.btn_output)
-        layout.addWidget(self.btn_process)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(self.label_input)
+        main_layout.addWidget(self.combo_mode)
+        main_layout.addWidget(self.btn_upload)
+        main_layout.addWidget(self.label_output)
+        main_layout.addWidget(self.btn_output)
+        main_layout.addWidget(self.btn_process)
+
+        # Horizontal layout for image display and text comparison
+        horizontal_layout = QHBoxLayout()
+        horizontal_layout.addWidget(self.scroll_area)
+
+        # Add text comparison widgets side by side
+        comparison_layout = QHBoxLayout()
+        comparison_layout.addWidget(QLabel('Original PDF Text', self))
+        comparison_layout.addWidget(self.ocr_text_edit)
+        comparison_layout.addWidget(QLabel('DOCX Text', self))
+        comparison_layout.addWidget(self.docx_text_edit)
+
+        horizontal_layout.addLayout(comparison_layout)
+
+        main_layout.addLayout(horizontal_layout)
 
         container = QWidget()
-        container.setLayout(layout)
+        container.setLayout(main_layout)
         self.setCentralWidget(container)
 
     def change_mode(self):
@@ -99,6 +136,10 @@ class OCRApp(QMainWindow):
                         ocrmypdf.ocr(selected_file, output_file)
                         self.split_into_chapters(output_file, os.path.join(output_dir, 'chapters'))
                         self.convert_to_docx(output_file, os.path.join(text_dir, f'{base_name}.docx'))
+
+                    # After processing, show the visual comparison
+                    self.compare_and_show(selected_file, output_file, os.path.join(text_dir, f'{base_name}.docx'))
+
                 except Exception as e:
                     print(f'Error processing file {selected_file}: {e}')
 
@@ -165,11 +206,81 @@ class OCRApp(QMainWindow):
         except Exception as e:
             print(f'Error converting PDF to DOCX: {e}')
 
+    def compare_and_show(self, original_pdf, ocr_pdf, docx_file):
+        """Perform the visual comparison between the original, OCR, and DOCX files"""
+        # If the original PDF is image-based, show the page images
+        if not self.is_text_based(original_pdf):
+            self.display_pdf_images(original_pdf)
+        else:
+            original_text = self.extract_text_from_pdf(original_pdf)
+            self.ocr_text_edit.setText(original_text)
+
+        ocr_text = self.extract_text_from_pdf(ocr_pdf)
+        docx_text = self.extract_text_from_docx(docx_file)
+        self.show_comparison(ocr_text, docx_text)
+
+    def display_pdf_images(self, pdf_path):
+        """ Display all page images of the original PDF in a scrollable view """
+        self.scroll_area_widget_layout.setSpacing(10)
+        self.scroll_area_widget_layout.setAlignment(Qt.AlignTop)
+
+        pdf_document = fitz.open(pdf_path)
+        self.scroll_area_widget_layout.addStretch()  # Add stretchable space before images
+
+        for page_num in range(len(pdf_document)):
+            page = pdf_document.load_page(page_num)
+            pix = page.get_pixmap()
+
+            # Convert PyMuPDF pixmap to QImage
+            image = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format_RGB888)
+            
+            # Convert QImage to QPixmap
+            qt_image = QPixmap.fromImage(image)
+            
+            # Create QLabel to hold the pixmap
+            image_label = QLabel()
+            image_label.setPixmap(qt_image)
+            
+            # Add the QLabel (image) to the layout
+            self.scroll_area_widget_layout.addWidget(image_label)
+
+        pdf_document.close()
+
+    def extract_text_from_pdf(self, pdf_path):
+        """ Extract text from a PDF file """
+        try:
+            pdf_document = fitz.open(pdf_path)
+            text = ""
+            for page_num in range(len(pdf_document)):
+                page = pdf_document.load_page(page_num)
+                text += page.get_text("text") + "\n"
+            pdf_document.close()
+            return text
+        except Exception as e:
+            print(f'Error extracting text from PDF: {e}')
+            return ""
+
+    def extract_text_from_docx(self, docx_path):
+        """ Extract text from a DOCX file """
+        try:
+            doc = Document(docx_path)
+            text = "\n".join([para.text for para in doc.paragraphs])
+            return text
+        except Exception as e:
+            print(f'Error extracting text from DOCX: {e}')
+            return ""
+
+    def show_comparison(self, text1, text2):
+        """ Display comparison between two texts (OCR and DOCX) """
+        self.ocr_text_edit.setText(text1)
+        self.docx_text_edit.setText(text2)
+
     def show_message(self, title, message):
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.exec_()
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
