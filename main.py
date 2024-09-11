@@ -1,14 +1,14 @@
-import sys
-import os
-import ocrmypdf
-import fitz  # PyMuPDF
+import sys #Built-in for Python 3.12.6
+import os #Built-in for Python 3.12.6
+import ocrmypdf #v16.5.0
+import fitz  # Also know as PyMuPDF, v1.24.10 
 from docx import Document
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog, QPushButton, QLabel,
     QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QComboBox, QTextEdit, QScrollArea
-)
-from PyQt5.QtGui import QImage, QPixmap
-from PyQt5.QtCore import Qt
+) #5.15.11 
+from PyQt5.QtGui import QImage, QPixmap #v5.15.11 
+from PyQt5.QtCore import Qt #v5.15.11 
 
 
 class OCRApp(QMainWindow):
